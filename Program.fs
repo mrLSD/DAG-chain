@@ -9,33 +9,37 @@ type UdpState = {
 
 type UdpConnect(addr: string, port: int) =
     let udpClient = new Net.Sockets.UdpClient()
-    let endPoint = new Net.IPEndPoint(Net.IPAddress.Any, port)
+    let recvUdpClient = new Net.Sockets.UdpClient(port)
     do
         udpClient.Connect(addr, port)
-    member this.Send(data) =
-        udpClient.Send(data, data.Length)
-    member private this.ReceiveCallback(ar: IAsyncResult) =
-        let state = ar.AsyncState :?> UdpState
-        let receivedBytes = state.udpClient.EndReceive(ar, ref state.endPoint)
-        let receivedString = Text.Encoding.ASCII.GetString receivedBytes
-        printfn "ReceiveCallback: %s" receivedString 
-    member this.ReceiveMessages() =
-        let endPoint = Net.IPEndPoint(Net.IPAddress.Any, port)
-        let udpClient = new Net.Sockets.UdpClient(endPoint)
-        let state: UdpState = {
-            endPoint = endPoint
-            udpClient = udpClient 
-        }
-        printfn "listening for messages"
-        udpClient.BeginReceive(AsyncCallback this.ReceiveCallback, state)
-let mainConnect =
-    let sendBytes = Text.Encoding.ASCII.GetBytes("PING");
-    let udpClient = UdpConnect("127.0.0.1", 11000)
-    udpClient.Send sendBytes 
+    member this.Send(data: byte[]) = async {
+        printfn "<- Send message: %A" (Text.Encoding.ASCII.GetString data)
+        return! udpClient.SendAsync(data, data.Length) |> Async.AwaitTask
+    }
+    member this.Get() = async {
+        printfn "Wait..."
+        let! msg = recvUdpClient.ReceiveAsync() |> Async.AwaitTask
+        let msgStr = Text.Encoding.ASCII.GetString msg.Buffer
+        printfn "-> Get message: %s" msgStr
+        return msg
+    }
+    member this.SendLoop = async {
+        let msg = sprintf "\tTime: %O" DateTime.Now.TimeOfDay
+        do! this.Send (Text.Encoding.ASCII.GetBytes msg) |> Async.Ignore
+        do! Async.Sleep 1000
+        do! this.SendLoop
+    }
+    member this.GetLoop = async {
+        do! this.Get() |> Async.Ignore
+        do! this.GetLoop
+    }
 
 [<EntryPoint>]
 let main argv =
-    printfn "F# UDP!"
-    let _ = mainConnect
-    
+    let client = UdpConnect("127.0.0.1", 3000)
+    [client.GetLoop; client.SendLoop]
+    |> Async.Parallel
+    |> Async.Ignore
+    |> Async.RunSynchronously
+
     0 // return an integer exit code
