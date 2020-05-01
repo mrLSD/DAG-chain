@@ -4,9 +4,17 @@
         <OutputType>Exe</OutputType>
         <TargetFramework>netcoreapp3.1</TargetFramework>
     </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Serilog" Version="2.9.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
+        <PackageReference Include="Serilog.Sinks.Literate" Version="3.0.0" />
+    </ItemGroup>
     
     <ItemGroup>
-        <Compile Include="Program.fs"/>
+        <Compile Include="Log.fs" />
+        <Compile Include="Network.fs" />
+        <Compile Include="Program.fs" />
     </ItemGroup>
     
 </Project>
