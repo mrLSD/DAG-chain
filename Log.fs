@@ -6,4 +6,3 @@ let Logger = LoggerConfiguration()
                 .MinimumLevel.Debug()
                 .WriteTo.Console(theme = AnsiConsoleTheme.Grayscale)
                 .CreateLogger()
-          
