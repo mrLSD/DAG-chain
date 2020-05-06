@@ -9,11 +9,13 @@
         <PackageReference Include="Serilog" Version="2.9.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
         <PackageReference Include="Serilog.Sinks.Literate" Version="3.0.0" />
+        <PackageReference Include="RocksDbSharp" Version="6.2.2" />
     </ItemGroup>
     
     <ItemGroup>
         <Compile Include="Log.fs" />
         <Compile Include="Utils.fs" />
+        <Compile Include="Storage.fs" />
         <Compile Include="Network.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
