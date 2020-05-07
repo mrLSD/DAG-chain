@@ -49,24 +49,17 @@ type Storage(path: string) =
         Native.Instance.rocksdb_put(db, writeoptions, key, value, ref err)
         StorageErrors<_>.Return(err)
     member this.SetMany(key, value) =
-        Native.Instance.rocksdb_writebatch_put(writeoptions, key, value, Encoding.UTF8)
+        Native.Instance.rocksdb_writebatch_put(wb, key, value, Encoding.UTF8)
         this
     member this.Flush() =
-        Native.Instance.rocksdb_write(db, writeoptions, wb)
+        let err = IntPtr.Zero
+        Native.Instance.rocksdb_write(db, writeoptions, wb, ref err)
+        StorageErrors<_>.Return(err)
     member this.Get(key) =
         let err = IntPtr.Zero
         let value = Native.Instance.rocksdb_get(db, readoptions, key, ref err)
-        StorageErrors<_>.Return(value, err)        
-
-let connect =
-    let storage = Storage("test")
-    let res = storage.Set("key1", "123")
-    printfn "Set: %A" res
-    let res = storage.Set("key2", "124")
-    printfn "Set: %A" res
-    let res = storage.Get("key1")
-    printfn "Get: %A" res
-    let res = storage.Get("key2")
-    printfn "Get: %A" res
-    
-    
+        StorageErrors<_>.Return(value, err)
+    member this.GetMany(keys: string[]) =
+        let err = IntPtr.Zero
+        let value = Native.Instance.rocksdb_multi_get(db, readoptions, keys)
+        StorageErrors<_>.Return(value, err)
