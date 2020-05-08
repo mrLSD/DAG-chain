@@ -5,6 +5,18 @@
         <TargetFramework>netcoreapp3.1</TargetFramework>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <RocksDbUrl>https://github.com/warrenfalk/rocksdb-sharp-native/releases/download/v6.2.2/librocksdb.so</RocksDbUrl>
+    </PropertyGroup>
+    
+    <Target Name="DownloadContentFiles" BeforeTargets="Build">
+        <DownloadFile
+                SourceUrl="$(RocksDbUrl)"
+                DestinationFolder="$(OutDir)">
+            <Output TaskParameter="DownloadedFile" ItemName="Content" />
+        </DownloadFile>
+    </Target>
+    
     <ItemGroup>
         <PackageReference Include="Serilog" Version="2.9.0" />
         <PackageReference Include="Serilog.Sinks.Console" Version="3.1.1" />
