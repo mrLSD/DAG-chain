@@ -1,7 +1,6 @@
 module DAG.Network
 
 open System
-open System.Net.Sockets
 open DAG.Log
 open DAG.Utils
 
