@@ -4,7 +4,7 @@ open DAG
 
 [<EntryPoint>]
 let main argv =
-    let client = Network.UdpConnect("127.0.0.1", 3000)
+    let client = new Network.UdpConnect("127.0.0.1", 3000)
     [client.GetLoop; client.SendLoop]
     |> Async.Parallel
     |> Async.Ignore
