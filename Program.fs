@@ -1,5 +1,6 @@
 ﻿/// DAG chain implementation
 
+open System
 open DAG
 
 [<EntryPoint>]
