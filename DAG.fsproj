@@ -10,9 +10,7 @@
     </PropertyGroup>
     
     <Target Name="DownloadContentFiles" BeforeTargets="Build">
-        <DownloadFile
-                SourceUrl="$(RocksDbUrl)"
-                DestinationFolder="$(OutDir)">
+        <DownloadFile SourceUrl="$(RocksDbUrl)" DestinationFolder="$(OutDir)">
             <Output TaskParameter="DownloadedFile" ItemName="Content" />
         </DownloadFile>
     </Target>
@@ -30,6 +28,7 @@
         <Compile Include="Storage.fs" />
         <Compile Include="Network.fs" />
         <Compile Include="Program.fs" />
+        <Content Include="docs\network.md" />
     </ItemGroup>
     
 </Project>
