@@ -23,7 +23,7 @@ module DAG.Network
 
 open System
 open System.Security.Cryptography
-open System.Text.Json
+open FSharp.Json
 open DAG.Log
 open DAG.Utils
 
@@ -54,10 +54,10 @@ type EventNetwork<'T> = {
     Message: 'T 
 } with
     member this.Encode() =
-        let data = JsonSerializer.Serialize this
+        let data = Json.serialize this
         StringToBytes data
-    member this.Decode(data: string): EventNetwork<'T> =
-        JsonSerializer.Deserialize data
+    static member Decode(data: byte[]): EventNetwork<'T> =
+        Json.deserialize (BytesToString data)
 
 /// GetNodes Message 
 type MessageGetNodes = {
@@ -73,33 +73,31 @@ type UdpConnect(addr: string, port: int) =
         udpClient.Connect(addr, port)
     let networkEvent = Event<EventNetwork<_>>()
     member this.NetworkEvent = networkEvent.Publish
-    member this.Send<'T>(data: 'T) = async {
-        let ev = {
-            EventNetwork.EventType = EventNetworkType.SendMessage
-            Message = data
-        } 
+    member this.Send(ev: EventNetwork<_>) = async {
+        let msg = ev.Encode()
+        Logger.Debug("<- Send message: {msg}", msg)
+        let! res = udpClient.SendAsync(msg, msg.Length) |> Async.AwaitTask
         networkEvent.Trigger(ev)
-        let msg = JsonSerializer
-        Logger.Debug("<- Send message: {msg}", BytesToString data)
-        return! udpClient.SendAsync(data, data.Length) |> Async.AwaitTask
+        return res
     }
     member this.Get() = async {
         let! msg = recvUdpClient.ReceiveAsync() |> Async.AwaitTask
         Logger.Debug("-> Get message: {msg}", BytesToString msg.Buffer)
-        let ev = {
-            EventNetwork.EventType = EventNetworkType.GetMessage
-            Message = msg.Buffer
-        }
+        let ev: EventNetwork<string> = EventNetwork.Decode(msg.Buffer)
         networkEvent.Trigger(ev)
         return msg
     }
-    member this.Subscribe<'T>(e: EventNetworkType, handler: EventNetwork<'T> -> unit) =
+    member this.Subscribe(e: EventNetworkType, handler: EventNetwork<_> -> unit) =
         this.NetworkEvent
             |> Event.filter (fun (en: EventNetwork<_>) -> e.Equals en.EventType )
             |> Event.add handler
     member this.SendLoop = async {
         let msg = sprintf "Время: %O" DateTime.Now.TimeOfDay
-        do! this.Send (Text.Encoding.UTF8.GetBytes msg) |> Async.Ignore
+        let ev = {
+            EventNetwork.EventType = EventNetworkType.SendMessage
+            Message = msg
+        }
+        do! this.Send(ev) |> Async.Ignore
         do! Async.Sleep 1000
         do! this.SendLoop
     }
@@ -117,7 +115,7 @@ type UdpConnect(addr: string, port: int) =
             this.Close()
 
 type NodeBootstrap() =
-    member this.HandlerGetNodes (ev: EventNetwork<MessageGetNodes>) =    
+    member this.HandlerGetNodes (ev: EventNetwork<_>) =    
         let nodeAddresses = ev.Message
         ()
     member this.Run() =
