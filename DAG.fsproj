@@ -28,9 +28,9 @@
         <Compile Include="Log.fs" />
         <Compile Include="Utils.fs" />
         <Compile Include="Storage.fs" />
+        <Compile Include="State.fs" />
         <Compile Include="Network.fs" />
         <Compile Include="Program.fs" />
-        <Content Include="docs\network.md" />
     </ItemGroup>
     
 </Project>

@@ -25,6 +25,7 @@ open System
 open System.Security.Cryptography
 open FSharp.Json
 open DAG.Log
+open DAG.State
 open DAG.Utils
 
 /// Bootstrap Nodes array
@@ -97,8 +98,7 @@ type UdpConnect(addr: string, port: int) =
     member this.Send(ev: EventNetwork) = async {
         let msg = ev.Encode()
         Logger.Debug("<- Send message: {msg}", ev)
-        let! res = udpClient.SendAsync(msg, msg.Length) |> Async.AwaitTask
-        return res
+        return! udpClient.SendAsync(msg, msg.Length) |> Async.AwaitTask        
     }
     /// Async Get data from remote client
     /// Fire Event.
@@ -144,11 +144,15 @@ type UdpConnect(addr: string, port: int) =
             this.Close()
 
 /// Bootstrap Node structure
-type NodeBootstrap() =
-    member this.HandlerGetNodes ev =    
+type NodeBootstrap(state: AppState) =
+    member this.HandlerGetNodes ev =
+        let _ = state.Storage.Get("nodes")
         let nodeAddresses = Json.deserialize<MessageGetNodes> ev
         ()
-    /// Run boostraping from constant bootstrap nodes.
+    member this.HandlerPing ev =    
+        let nodeAddresses = Json.deserialize<MessageGetNodes> ev
+        ()
+    /// Run bootstraping from constant bootstrap nodes.
     /// Fetch random node and fire GetNodes event
     member this.Run() =
         let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
