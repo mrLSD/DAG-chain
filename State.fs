@@ -2,6 +2,7 @@ module DAG.State
 
 open DAG.Storage
 
-type AppState = {
+type AppState<'T> = {
     Storage: Storage
+    Listener: 'T
 }

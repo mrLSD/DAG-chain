@@ -30,11 +30,12 @@ open DAG.Utils
 
 /// Bootstrap Nodes array
 let bootstrapNodes = [|
-    ("127.0.0.1", 10001)
-    ("127.0.0.1", 10002)
-    ("127.0.0.1", 10003)
-    ("127.0.0.1", 10004)
-    ("127.0.0.1", 10005)
+    ("127.0.0.1", 3001)
+//    ("127.0.0.1", 10001)
+//    ("127.0.0.1", 10002)
+//    ("127.0.0.1", 10003)
+//    ("127.0.0.1", 10004)
+//    ("127.0.0.1", 10005)
 |]
 
 /// Basic P2p Node structure
@@ -75,19 +76,32 @@ type MessageSend = {
         {
             EventNetwork.EventType = EventNetworkType.SendMessage
             Message = Json.serialize this
-        }        
+        }
+        
+type MessagePing = {
+    data: string
+} with
+    member this.CreateEvent() =
+        {
+            EventNetwork.EventType = EventNetworkType.Ping
+            Message = Json.serialize this
+        }
 
 /// Basic connection class
 /// Contain Events messaging. All network behaviors are asynchronous.
 /// Initialization via address and port.
 /// When class released all connections will close.
-type UdpConnect(addr: string, port: int) =
-    /// Client for Sending
-    let udpClient = new Net.Sockets.UdpClient()
-    /// Client for Receiving
-    let recvUdpClient = new Net.Sockets.UdpClient(port)
-    do
-        udpClient.Connect(addr, port)
+type UdpConnect(addr: string, port: int, sender: bool) =
+    /// Init multi client
+    let udpConncet =
+        if sender then
+            /// Client for Sending
+            let connect = new Net.Sockets.UdpClient()
+            connect.Connect(addr, port)
+            connect
+        else
+            /// Client for Receiving
+            new Net.Sockets.UdpClient(port)
 
     /// Networks Event identifier
     let networkEvent = Event<EventNetwork>()
@@ -98,12 +112,12 @@ type UdpConnect(addr: string, port: int) =
     member this.Send(ev: EventNetwork) = async {
         let msg = ev.Encode()
         Logger.Debug("<- Send message: {msg}", ev)
-        return! udpClient.SendAsync(msg, msg.Length) |> Async.AwaitTask        
+        return! udpConncet.SendAsync(msg, msg.Length) |> Async.AwaitTask        
     }
     /// Async Get data from remote client
     /// Fire Event.
     member this.Get() = async {
-        let! msg = recvUdpClient.ReceiveAsync() |> Async.AwaitTask
+        let! msg = udpConncet.ReceiveAsync() |> Async.AwaitTask
         Logger.Debug("-> Get message: {msg}", BytesToString msg.Buffer)
         let ev = EventNetwork.Decode(msg.Buffer)
         networkEvent.Trigger(ev)
@@ -135,28 +149,39 @@ type UdpConnect(addr: string, port: int) =
     }
     /// Close all connections
     member this.Close() =
-        udpClient.Close()
-        recvUdpClient.Close()
+        udpConncet.Close()
     
     // Close connections
     interface IDisposable with
         member this.Dispose() = 
             this.Close()
 
+let UdpClient(addr: string, port: int) = new UdpConnect(addr, port, true)
+let UdpListener(port: int) = new UdpConnect("", port, false)
+
 /// Bootstrap Node structure
-type NodeBootstrap(state: AppState) =
+type NodeBootstrap(state: AppState<UdpConnect>) =
     member this.HandlerGetNodes ev =
-        let _ = state.Storage.Get("nodes")
-        let nodeAddresses = Json.deserialize<MessageGetNodes> ev
-        ()
-    member this.HandlerPing ev =    
-        let nodeAddresses = Json.deserialize<MessageGetNodes> ev
+        //let _ = state.Storage.Get("nodes")
+        //let nodeAddresses = Json.deserialize<MessageGetNodes> ev
+        printfn "HandlerGetNodes: %s" ev
         ()
     /// Run bootstraping from constant bootstrap nodes.
     /// Fetch random node and fire GetNodes event
-    member this.Run() =
+    member this.Run = async {
+        printfn "NodeBootstrap.Run"
         let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
         let (node, port) = bootstrapNodes.[randomNode]
         // Connect to random Node
-        let client = new UdpConnect(node, port)
+        let client = UdpClient(node, port)
         client.Subscribe(EventNetworkType.GetNodes, this.HandlerGetNodes)
+        
+        let ev = {
+            MessagePing.data = "127.0.0.1:12000"
+        }
+        printfn "Send MessagePing"
+        do! client.Send(ev.CreateEvent()) |> Async.Ignore
+        printfn "Sended MessagePing: %A:%A" node port
+    }
+    member this.Discovery() =
+        0
