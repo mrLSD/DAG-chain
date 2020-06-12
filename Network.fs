@@ -30,7 +30,7 @@ open DAG.Utils
 
 /// Bootstrap Nodes array
 let bootstrapNodes = [|
-    ("127.0.0.1", 3001)
+    ("127.0.0.1", 3000)
 //    ("127.0.0.1", 10001)
 //    ("127.0.0.1", 10002)
 //    ("127.0.0.1", 10003)
@@ -80,6 +80,7 @@ type MessageSend = {
         
 type MessagePing = {
     data: string
+    sender: string
 } with
     member this.CreateEvent() =
         {
@@ -105,6 +106,7 @@ type UdpConnect(addr: string, port: int, sender: bool) =
 
     /// Networks Event identifier
     let networkEvent = Event<EventNetwork>()
+    member this.NodeAddress = sprintf "%s:%d" addr port
     /// Network Event publisher
     member this.NetworkEvent = networkEvent.Publish
     /// Async Send data to remote client.
@@ -157,7 +159,7 @@ type UdpConnect(addr: string, port: int, sender: bool) =
             this.Close()
 
 let UdpClient(addr: string, port: int) = new UdpConnect(addr, port, true)
-let UdpListener(port: int) = new UdpConnect("", port, false)
+let UdpListener(addr: string, port: int) = new UdpConnect(addr, port, false)
 
 /// Bootstrap Node structure
 type NodeBootstrap(state: AppState<UdpConnect>) =
@@ -172,16 +174,22 @@ type NodeBootstrap(state: AppState<UdpConnect>) =
         printfn "NodeBootstrap.Run"
         let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
         let (node, port) = bootstrapNodes.[randomNode]
-        // Connect to random Node
-        let client = UdpClient(node, port)
-        client.Subscribe(EventNetworkType.GetNodes, this.HandlerGetNodes)
+        state.Listener.Subscribe(EventNetworkType.GetNodes, this.HandlerGetNodes)
         
         let ev = {
             MessagePing.data = "127.0.0.1:12000"
+            sender = state.Listener.NodeAddress
         }
-        printfn "Send MessagePing"
+        // Connect to random Node
+        let client = UdpClient(node, port)
         do! client.Send(ev.CreateEvent()) |> Async.Ignore
         printfn "Sended MessagePing: %A:%A" node port
+        while true do
+            ()
     }
-    member this.Discovery() =
-        0
+    member this.Discovery = async {
+        state.Listener.Subscribe(EventNetworkType.Ping, fun ev -> 
+            printfn "HandlerPing: %s" ev
+            ()
+        )
+    }
