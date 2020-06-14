@@ -79,13 +79,23 @@ type MessageSend = {
         }
         
 type MessagePing = {
-    data: string
-    sender: string
+    senderAddr: string
+    senderPort: int
 } with
     member this.CreateEvent() =
         {
             EventNetwork.EventType = EventNetworkType.Ping
             Message = Json.serialize this
+        }
+    static member GetData(msg): MessagePing = 
+        Json.deserialize msg    
+
+type MessagePong =
+    | Success
+    member this.CreateEvent() =
+        {
+            EventNetwork.EventType = EventNetworkType.Ping
+            Message = ""
         }
 
 /// Basic connection class
@@ -106,7 +116,8 @@ type UdpConnect(addr: string, port: int, sender: bool) =
 
     /// Networks Event identifier
     let networkEvent = Event<EventNetwork>()
-    member this.NodeAddress = sprintf "%s:%d" addr port
+    member this.Addr = addr
+    member this.Port = port 
     /// Network Event publisher
     member this.NetworkEvent = networkEvent.Publish
     /// Async Send data to remote client.
@@ -166,30 +177,36 @@ type NodeBootstrap(state: AppState<UdpConnect>) =
     member this.HandlerGetNodes ev =
         //let _ = state.Storage.Get("nodes")
         //let nodeAddresses = Json.deserialize<MessageGetNodes> ev
-        printfn "HandlerGetNodes: %s" ev
+        printfn "\t# HandlerGetNodes: %s" ev
         ()
-    /// Run bootstraping from constant bootstrap nodes.
+    /// Run bootstrapping from constant bootstrap nodes.
     /// Fetch random node and fire GetNodes event
     member this.Run = async {
-        printfn "NodeBootstrap.Run"
-        let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
-        let (node, port) = bootstrapNodes.[randomNode]
         state.Listener.Subscribe(EventNetworkType.GetNodes, this.HandlerGetNodes)
-        
-        let ev = {
-            MessagePing.data = "127.0.0.1:12000"
-            sender = state.Listener.NodeAddress
-        }
-        // Connect to random Node
-        let client = UdpClient(node, port)
-        do! client.Send(ev.CreateEvent()) |> Async.Ignore
-        printfn "Sended MessagePing: %A:%A" node port
-        while true do
-            ()
-    }
-    member this.Discovery = async {
-        state.Listener.Subscribe(EventNetworkType.Ping, fun ev -> 
-            printfn "HandlerPing: %s" ev
+        state.Listener.Subscribe(EventNetworkType.Pong, fun _ ->
+            printfn "\t# EventNetworkType.Pong"
             ()
         )
+
+        let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
+        let (node, port) = bootstrapNodes.[randomNode]        
+        let ev = {            
+            MessagePing.senderAddr = state.Listener.Addr
+            senderPort = state.Listener.Port
+        }
+        // Connect to random Node
+        do! UdpClient(node, port)
+                .Send(ev.CreateEvent())
+                |> Async.Ignore
     }
+    member this.Discovery = 
+        state.Listener.Subscribe(EventNetworkType.Ping, fun ev -> 
+            printfn "\t# Subscribe.Ping: %s" ev
+            let msg = MessagePing.GetData ev 
+            let ev = MessagePong.Success
+            // Send synchronously
+            UdpClient(msg.senderAddr, msg.senderPort)
+                .Send(ev.CreateEvent())
+                |> Async.Ignore
+                |> Async.RunSynchronously
+        )

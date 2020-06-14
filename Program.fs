@@ -15,8 +15,9 @@ let main argv =
         Listener = listener
     }
     let bs = NodeBootstrap(appState)
+    bs.Discovery
     //[listener.GetLoop]
-    [bs.Run; bs.Discovery; listener.GetLoop]
+    [bs.Run; listener.GetLoop]
     //[client.GetLoop; client.SendLoop; client.GetEnv; bs.Run]
     //[client.GetLoop; bs.Run]
     |> Async.Parallel
