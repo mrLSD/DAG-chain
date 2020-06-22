@@ -1,8 +1,7 @@
 ﻿/// DAG chain implementation
 
-open System
 open DAG
-open DAG.Network
+open DAG.Bootstrap
 open DAG.State
 open DAG.Storage
 

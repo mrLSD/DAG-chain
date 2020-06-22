@@ -30,6 +30,7 @@
         <Compile Include="Storage.fs" />
         <Compile Include="State.fs" />
         <Compile Include="Network.fs" />
+        <Compile Include="Bootstrap.fs" />
         <Compile Include="Program.fs" />
     </ItemGroup>
     

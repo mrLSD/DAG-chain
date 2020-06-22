@@ -22,28 +22,10 @@
 module DAG.Network
 
 open System
-open System.Security.Cryptography
+open System.Net
 open FSharp.Json
 open DAG.Log
-open DAG.State
 open DAG.Utils
-
-/// Bootstrap Nodes array
-let bootstrapNodes = [|
-    ("127.0.0.1", 3000)
-//    ("127.0.0.1", 10001)
-//    ("127.0.0.1", 10002)
-//    ("127.0.0.1", 10003)
-//    ("127.0.0.1", 10004)
-//    ("127.0.0.1", 10005)
-|]
-
-/// Basic P2p Node structure
-type P2PNode = {
-    Address: string
-    Port: string
-    LastSeen: DateTime option
-}
 
 /// Event Network common types
 type EventNetworkType =
@@ -64,39 +46,22 @@ type EventNetwork = {
     static member Decode(data: byte[]): EventNetwork =
         Json.deserialize (BytesToString data)
 
-/// GetNodes Message 
-type MessageGetNodes = {
-    Nodes: P2PNode[]
-}
-  
-type MessageSend = {
-    data: string
-} with
-    member this.CreateEvent() =
-        {
-            EventNetwork.EventType = EventNetworkType.SendMessage
-            Message = Json.serialize this
-        }
-        
-type MessagePing = {
-    senderAddr: string
-    senderPort: int
-} with
-    member this.CreateEvent() =
-        {
-            EventNetwork.EventType = EventNetworkType.Ping
-            Message = Json.serialize this
-        }
-    static member GetData(msg): MessagePing = 
-        Json.deserialize msg    
+type TcpConnect(addr: string, port: int) =
+    /// Init multi client
+    let tcpClient =
+            /// Client for Sending
+            let connect = new Net.Sockets.TcpClient()
+            connect.Connect(addr, port)
+            connect
+    let tcpListener =
+            /// TCP Listener for Receiving
+            let localAddr = IPAddress.Parse(addr);
+            Net.Sockets.TcpListener(localAddr, port)
+    member this.Client (addr: string, port: int) =
+            let connect = new Net.Sockets.TcpClient()
+            connect.Connect(addr, port)
+            connect
 
-type MessagePong =
-    | Success
-    member this.CreateEvent() =
-        {
-            EventNetwork.EventType = EventNetworkType.Ping
-            Message = ""
-        }
 
 /// Basic connection class
 /// Contain Events messaging. All network behaviors are asynchronous.
@@ -141,21 +106,15 @@ type UdpConnect(addr: string, port: int, sender: bool) =
         this.NetworkEvent
             |> Event.filter (fun (en: EventNetwork) -> e.Equals en.EventType )
             |> Event.add (fun ev -> handler ev.Message)
-    member this.SendLoop = async {
-        let msg = sprintf "Время: %O" DateTime.Now.TimeOfDay
-        let ev = {
-            MessageSend.data = msg
-        }        
-        do! this.Send(ev.CreateEvent()) |> Async.Ignore
-        do! Async.Sleep 1000
-        do! this.SendLoop
-    }
-    member this.GetEnv = async {
-        this.Subscribe(EventNetworkType.SendMessage, fun ev ->
-                let nodeAddresses = Json.deserialize<MessageSend> ev
-                printfn "GetEnv: %A" nodeAddresses
-            )
-    }
+//    member this.SendLoop = async {
+//        let msg = sprintf "Время: %O" DateTime.Now.TimeOfDay
+//        let ev = {
+//            MessageSend.data = msg
+//        }        
+//        do! this.Send(ev.CreateEvent()) |> Async.Ignore
+//        do! Async.Sleep 1000
+//        do! this.SendLoop
+//    }
     member this.GetLoop = async {
         do! this.Get() |> Async.Ignore
         do! this.GetLoop
@@ -171,42 +130,3 @@ type UdpConnect(addr: string, port: int, sender: bool) =
 
 let UdpClient(addr: string, port: int) = new UdpConnect(addr, port, true)
 let UdpListener(addr: string, port: int) = new UdpConnect(addr, port, false)
-
-/// Bootstrap Node structure
-type NodeBootstrap(state: AppState<UdpConnect>) =
-    member this.HandlerGetNodes ev =
-        //let _ = state.Storage.Get("nodes")
-        //let nodeAddresses = Json.deserialize<MessageGetNodes> ev
-        printfn "\t# HandlerGetNodes: %s" ev
-        ()
-    /// Run bootstrapping from constant bootstrap nodes.
-    /// Fetch random node and fire GetNodes event
-    member this.Run = async {
-        state.Listener.Subscribe(EventNetworkType.GetNodes, this.HandlerGetNodes)
-        state.Listener.Subscribe(EventNetworkType.Pong, fun _ ->
-            printfn "\t# EventNetworkType.Pong"
-            ()
-        )
-
-        let randomNode = RandomNumberGenerator.GetInt32 bootstrapNodes.Length
-        let (node, port) = bootstrapNodes.[randomNode]        
-        let ev = {            
-            MessagePing.senderAddr = state.Listener.Addr
-            senderPort = state.Listener.Port
-        }
-        // Connect to random Node
-        do! UdpClient(node, port)
-                .Send(ev.CreateEvent())
-                |> Async.Ignore
-    }
-    member this.Discovery = 
-        state.Listener.Subscribe(EventNetworkType.Ping, fun ev -> 
-            printfn "\t# Subscribe.Ping: %s" ev
-            let msg = MessagePing.GetData ev 
-            let ev = MessagePong.Success
-            // Send synchronously
-            UdpClient(msg.senderAddr, msg.senderPort)
-                .Send(ev.CreateEvent())
-                |> Async.Ignore
-                |> Async.RunSynchronously
-        )
