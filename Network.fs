@@ -23,6 +23,8 @@ module DAG.Network
 
 open System
 open System.Net
+open System.Net.Sockets
+open System.Text
 open FSharp.Json
 open DAG.Log
 open DAG.Utils
@@ -46,22 +48,69 @@ type EventNetwork = {
     static member Decode(data: byte[]): EventNetwork =
         Json.deserialize (BytesToString data)
 
-type TcpConnect(addr: string, port: int) =
-    /// Init multi client
-    let tcpClient =
-            /// Client for Sending
+type TcpConnectClient (addr: string, port: int) =
+    /// Networks Event identifier
+    let networkEvent = Event<EventNetwork>()
+    let connect =
             let connect = new Net.Sockets.TcpClient()
             connect.Connect(addr, port)
             connect
-    let tcpListener =
-            /// TCP Listener for Receiving
-            let localAddr = IPAddress.Parse(addr);
-            Net.Sockets.TcpListener(localAddr, port)
-    member this.Client (addr: string, port: int) =
-            let connect = new Net.Sockets.TcpClient()
-            connect.Connect(addr, port)
-            connect
+//    static member Listener (addr: string, port: int) =
+//            let connect = Net.Sockets.TcpListener(IPAddress.Parse(addr), port)
+//            connect.Start()
+//            connect
+    /// Network Event publisher
+    member this.NetworkEvent = networkEvent.Publish
+    member this.Get() =
+        let stream = connect.GetStream()
+        let buffer: byte[] = Array.zeroCreate 1024
+        let mutable msg = StringBuilder()
+        let rec data () =
+            if stream.DataAvailable then
+                let _ = stream.Read(buffer, 0, 1024)
+                msg <- msg.Append buffer
+                do data()
+        data()
+        Logger.Debug("-> Get message: {msg}", msg.ToString())
+        msg.ToString()
+    member this.Send(ev: EventNetwork) =
+        let stream = connect.GetStream()
+        let msg = ev.Encode()
+        Logger.Debug("<- Send message: {msg}", ev)
+        stream.Write(msg, 0, msg.Length)
 
+type TcpConnectListener (addr: string, port: int) =
+    /// Networks Event identifier
+    let networkEvent = Event<EventNetwork>()
+    let connect =
+            let connect = Net.Sockets.TcpListener(IPAddress.Parse(addr), port)
+            connect.Start()
+            connect
+    /// Network Event publisher
+    member this.NetworkEvent = networkEvent.Publish
+    member this.Listen() = async {
+        let rec listen () =
+            let stream = connect.AcceptTcpClient().GetStream()
+            let res = this.Get(stream)
+            this.Send(stream, StringToBytes "Listener")
+            Logger.Debug("Listen: ", res)
+            listen()
+        listen()
+    }
+    member this.Get(stream: NetworkStream): string =
+        let buffer: byte[] = Array.zeroCreate 1024
+        let mutable msg = StringBuilder()
+        let rec data () =
+            if stream.DataAvailable then
+                let _ = stream.Read(buffer, 0, 1024)
+                msg <- msg.Append buffer
+                do data()
+        data()
+        Logger.Debug("-> Get message: {msg}", msg.ToString())
+        msg.ToString()
+    member this.Send(stream: NetworkStream, msg: byte[]) =
+        Logger.Debug("<- Send message: {msg}", msg)
+        stream.Write(msg, 0, msg.Length)
 
 /// Basic connection class
 /// Contain Events messaging. All network behaviors are asynchronous.
