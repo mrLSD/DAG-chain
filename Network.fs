@@ -78,23 +78,43 @@ type TcpConnectClient (addr: string, port: int) =
         let msg = ev.Encode()
         Logger.Debug("<- Send message: {msg}", ev)
         stream.Write(msg, 0, msg.Length)
+    member this.SendLoop = async {
+        let msg = sprintf "Время: %O" DateTime.Now.TimeOfDay
+        let ev = {
+            EventNetwork.EventType = EventNetworkType.Ping
+            Message = msg
+        }        
+        this.Send(ev)
+        do! Async.Sleep 5000
+        do! this.SendLoop
+    }
 
 type TcpConnectListener (addr: string, port: int) =
     /// Networks Event identifier
     let networkEvent = Event<EventNetwork>()
     let connect =
-            let connect = Net.Sockets.TcpListener(IPAddress.Parse(addr), port)
-            connect.Start()
-            connect
+        let connect = Net.Sockets.TcpListener(IPAddress.Parse(addr), port)
+        connect.Start()
+        connect
     /// Network Event publisher
     member this.NetworkEvent = networkEvent.Publish
-    member this.Listen() = async {
-        let rec listen () =
-            let stream = connect.AcceptTcpClient().GetStream()
-            let res = this.Get(stream)
-            this.Send(stream, StringToBytes "Listener")
-            Logger.Debug("Listen: ", res)
+    member this.Listen = async {
+        printfn "# Listen"
+        let rec listen() =
+            let tcpClient = connect.AcceptTcpClient()
+            let networkStream = tcpClient.GetStream()
+            let buffer = Array.zeroCreate 256
+            let i = networkStream.Read(buffer, 0, 256)
+            printfn "GET: [%A] %s" i (buffer.ToString())
             listen()
+//        let rec listen () =
+//            printfn "GetStream"
+//            let stream = connect.AcceptTcpClient().GetStream()
+//            printfn "Get"
+//            let res = this.Get(stream)
+//            //this.Send(stream, StringToBytes "Listener")
+//            Logger.Debug("Listen: ", res)
+//            listen()
         listen()
     }
     member this.Get(stream: NetworkStream): string =
@@ -102,14 +122,15 @@ type TcpConnectListener (addr: string, port: int) =
         let mutable msg = StringBuilder()
         let rec data () =
             if stream.DataAvailable then
-                let _ = stream.Read(buffer, 0, 1024)
+                let i = stream.Read(buffer, 0, 1024)
+                printfn "[%A] %s" i (buffer.ToString())
                 msg <- msg.Append buffer
                 do data()
         data()
-        Logger.Debug("-> Get message: {msg}", msg.ToString())
+        Logger.Debug("-> Listen Get message: {msg}", msg.ToString())
         msg.ToString()
     member this.Send(stream: NetworkStream, msg: byte[]) =
-        Logger.Debug("<- Send message: {msg}", msg)
+        Logger.Debug("<- Listen Send message: {msg}", msg)
         stream.Write(msg, 0, msg.Length)
 
 /// Basic connection class
