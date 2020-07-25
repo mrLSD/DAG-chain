@@ -11,3 +11,8 @@ exe-macos:
 exe-macos:
 	# Fully independed self contained executable app - Win10
 	@dotnet publish -r win10-x64 --self-contained  --configuration Release -p:PublishSingleFile=true -o bin
+
+run-tmp:
+	@mkdir /tmp/fs-dag || true
+	@cp -rf bin/Debug/netcoreapp3.1/* /tmp/fs-dag
+	@cd /tmp/fs-dag && ./DAG
