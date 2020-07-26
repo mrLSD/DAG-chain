@@ -27,18 +27,14 @@ let rec listen(tcpClient: Sockets.TcpClient): unit =
 
         Logger.Debug("listen Read")
         let rec data (): StringBuilder =
-            let dataLen = (8 * 1024)
+            let dataLen = (16 * 1024)
             let buffer = Array.zeroCreate dataLen
             let msg = StringBuilder()
             let len = stream.Read(buffer, 0, dataLen)
-            printfn "[%A]" len
-            if len > 0 then
-                let msgData = msg.Append buffer
-                printfn "%s" (msgData.ToString())
-                printfn "%s" (msg.ToString())
-                msgData.Append(data())
+            if stream.DataAvailable && len > 0 then
+                msg.Append(BytesToStringLength(buffer, len)).Append(data())
             else
-                msg
+                msg.Append(BytesToStringLength(buffer, len))
         let msgData = data() 
         //let len = stream.Read(buffer, 0, dataLen)
         Logger.Debug("[{read}] {msg}", msgData.Length, msgData)
