@@ -20,23 +20,23 @@ let client() =
 
 let listener() = Sockets.TcpListener(IPAddress.Parse(addr), port)
 
-let rec listen(tcpClient: Sockets.TcpClient): unit =
+let rec listen(tcpClient: Sockets.TcpClient) = async {
     if tcpClient.Connected then
         Logger.Debug("listen")
         let stream = tcpClient.GetStream()
 
         Logger.Debug("listen Read")
-        let rec data (): StringBuilder =
+        let rec data ()  = async {
             let dataLen = (16 * 1024)
             let buffer = Array.zeroCreate dataLen
             let msg = StringBuilder()
-            let len = stream.Read(buffer, 0, dataLen)
+            let! len = stream.ReadAsync(buffer, 0, dataLen) |> Async.AwaitTask
             if stream.DataAvailable && len > 0 then
-                msg.Append(BytesToStringLength(buffer, len)).Append(data())
+                return msg.Append(BytesToStringLength(buffer, len)).Append(data())
             else
-                msg.Append(BytesToStringLength(buffer, len))
-        let msgData = data() 
-        //let len = stream.Read(buffer, 0, dataLen)
+                return msg.Append(BytesToStringLength(buffer, len))
+        }
+        let! msgData = data() 
         Logger.Debug("[{read}] {msg}", msgData.Length, msgData)
         if msgData.Length = 0 then
             stream.Close()
@@ -44,51 +44,65 @@ let rec listen(tcpClient: Sockets.TcpClient): unit =
 
         try
             let msg = StringToBytes (sprintf "Time: %O" DateTime.Now.TimeOfDay)
-            stream.Write(msg, 0, msg.Length)
+            do! stream.WriteAsync(msg, 0, msg.Length) |> Async.AwaitTask
             Logger.Debug("listen sent {msg}", BytesToString msg)
         with
             | err -> 
                 Logger.Debug("Connection closed")
                 stream.Close()
                 tcpClient.Close()
-        listen tcpClient
+        return! listen(tcpClient) |> Async.Ignore
+}
 
-let listenerFlow() =
+let listenerFlow() = async {
     try
         let listener = listener()
         listener.Start()
         while true do
-            listen(listener.AcceptTcpClient())
-            printfn "New AcceptTcpClient"
+            do! listen(listener.AcceptTcpClient())
+            Logger.Information("New AcceptTcpClient")
     with
         | err -> Logger.Error(err, "listenerFlow")
-    
+}    
 
 let Client() =
     let connect = new Sockets.TcpClient()
     connect.Connect(addr, port)
     connect
     
-let rec sendClient(stream: Sockets.NetworkStream): unit =
+let rec sendClient(stream: Sockets.NetworkStream) = async {
     Logger.Debug("sendClient")
-    let msg = StringToBytes (sprintf "Time: %O" DateTime.Now.TimeOfDay)
-    Logger.Debug("sendClient Write {msg}", BytesToString msg)
-    stream.Write(msg, 0, msg.Length)
+    let mutable sent = false
+    let! _= Async.StartChild(async{
+        Logger.Debug("sendClient async")
+        let msg = StringToBytes (sprintf "Time: %O" DateTime.Now.TimeOfDay)
+        Logger.Debug("sendClient Write {msg}", BytesToString msg)
+        do! stream.WriteAsync(msg, 0, msg.Length) |> Async.AwaitTask
+        
+        Logger.Debug("sendClient Read")
+        let dataLen = (16 * 1024)
+        let buffer = Array.zeroCreate dataLen
+        let! len = stream.ReadAsync(buffer, 0, dataLen) |> Async.AwaitTask
+        Logger.Debug("[{len}] {msg}", len, BytesToString buffer)
+        sent <- true
+    })
     
-    Logger.Debug("sendClient Read")
-    let buffer = Array.zeroCreate 256
-    let read = stream.Read(buffer, 0, 256)
-    Logger.Debug("[{read}] {msg}", read, BytesToString buffer)
+    Logger.Information("Wait")
     
-    Threading.Thread.Sleep(30)
-    Logger.Debug("sendClient try send")
-    sendClient stream
+    do! Async.Sleep 10000
+    if sent then
+        Logger.Debug("sendClient try send\n")
+        return! sendClient(stream) |> Async.Ignore
+    else
+        Logger.Error("Didn't sent\n")
+}
     
-let clientFlow() =
+let clientFlow() = async {
     try
-        sendClient(Client().GetStream())
+        do! sendClient(Client().GetStream()) |> Async.Ignore
     with
         | err -> Logger.Error(err, "listenerFlow")
+}
 
 [<EntryPoint>]
 let main argv =
@@ -117,7 +131,13 @@ let main argv =
 
 
     if argv.Length > 0 then
-        clientFlow()
+        [clientFlow()]
+        |> Async.Parallel
+        |> Async.Ignore
+        |> Async.RunSynchronously
     else
-        listenerFlow()
+        [listenerFlow()]
+        |> Async.Parallel
+        |> Async.Ignore
+        |> Async.RunSynchronously
     0 // return an integer exit code
